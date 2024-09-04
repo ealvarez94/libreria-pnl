@@ -1,0 +1,4 @@
+/* Solo aplica el estilo si la clase 'post-type-sesion' está en el body del admin */
+.post-type-sesion #postdivrich {
+    display: none;
+}
