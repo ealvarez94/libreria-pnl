@@ -4,7 +4,65 @@ function libreria_pnl_shortcode($atts) {
     // Obtener la URL del directorio del plugin
     $plugin_dir_url = plugin_dir_url(__FILE__);
 
-    // Definir los iconos de los partidos (las rutas relativas a la carpeta `img`)
+    // Obtener las áreas disponibles para los botones
+    $output = libreria_pnl_get_areas_buttons();
+
+    // Div contenedor para las sesiones que se actualizará dinámicamente
+    $output .= '<div id="sesiones-filtradas">';
+    $output .= libreria_pnl_get_sesiones(); // Generar el contenido inicial
+    $output .= '</div>';
+
+    // Incluir el script de AJAX para el filtrado dinámico
+    $output .= '<script>
+        jQuery(document).ready(function($) {
+            $(".area-button").on("click", function() {
+                var areaSlug = $(this).data("area");
+
+                $.ajax({
+                    url: "' . admin_url('admin-ajax.php') . '",
+                    type: "POST",
+                    data: {
+                        action: "filtrar_sesiones_por_area",
+                        area_slug: areaSlug
+                    },
+                    success: function(response) {
+                        $("#sesiones-filtradas").html(response);
+                    }
+                });
+            });
+        });
+    </script>';
+
+    return $output;
+}
+
+// Hook para registrar el shortcode
+add_shortcode('libreria_pnl', 'libreria_pnl_shortcode');
+
+// Función para generar los botones de las áreas
+function libreria_pnl_get_areas_buttons() {
+    $areas = get_terms(array(
+        'taxonomy' => 'area',
+        'hide_empty' => false,
+    ));
+
+    $output = '<div class="area-buttons" style="margin-bottom: 20px;">';
+
+    $output .= '<button class="area-button" data-area="" style="background-color: #0073aa; color: white; padding: 10px 20px; margin-right: 10px; border: none; cursor: pointer; border-radius: 3px;">Todas</button>';
+
+    foreach ($areas as $area) {
+        $output .= '<button class="area-button" data-area="' . esc_attr($area->slug) . '" style="background-color: #0073aa; color: white; padding: 10px 20px; margin-right: 10px; border: none; cursor: pointer; border-radius: 3px;">' . esc_html($area->name) . '</button>';
+    }
+
+    $output .= '</div>';
+
+    return $output;
+}
+
+// Función para obtener las sesiones en función del área seleccionada
+function libreria_pnl_get_sesiones($area_slug = '') {
+    $plugin_dir_url = plugin_dir_url(__FILE__);
+
     $partidos_iconos = array(
         'PSOE' => $plugin_dir_url . 'img/psoe.png',
         'PP' => $plugin_dir_url . 'img/pp.png',
@@ -13,15 +71,24 @@ function libreria_pnl_shortcode($atts) {
         'Grupo Mixto' => $plugin_dir_url . 'img/grupo_mixto.png'
     );
 
-    // Obtener todas las sesiones
     $args = array(
         'post_type' => 'sesion',
-        'posts_per_page' => -1
+        'posts_per_page' => -1,
     );
+
+    if ($area_slug) {
+        $args['tax_query'] = array(
+            array(
+                'taxonomy' => 'area',
+                'field'    => 'slug',
+                'terms'    => $area_slug,
+            ),
+        );
+    }
+
     $sesiones = new WP_Query($args);
 
-    // Comenzar la salida del contenido
-    $output = '<table class="tabla-votaciones" style="width:100%; border-collapse: collapse;">';
+    $output = '<table class="tabla-votaciones" style="width:100%; border-collapse: collapse; margin-top: 20px;">';
     $output .= '<thead><tr>';
     $output .= '<th style="border: 1px solid #ddd; padding: 8px;">Sesión</th>';
     $output .= '<th style="border: 1px solid #ddd; padding: 8px;">Votaciones</th>';
@@ -33,31 +100,21 @@ function libreria_pnl_shortcode($atts) {
         while ($sesiones->have_posts()) {
             $sesiones->the_post();
 
-            // Obtener el nombre de la sesión
             $nombre_sesion = get_the_title();
-
-            // Obtener el JSON desde el campo personalizado
             $votaciones_json = get_field('votaciones_json');
-
-            // Decodificar el JSON en un array asociativo
             $votaciones = json_decode($votaciones_json, true);
+            $pdf_url = get_field('documento_pdf');
 
-            // Obtener el PDF
-            $pdf_url = get_field('archivo_pdf');
-
-            // Comenzar la fila de la tabla
             $output .= '<tr>';
             $output .= '<td style="border: 1px solid #ddd; padding: 8px;">' . esc_html($nombre_sesion) . '</td>';
 
-            // Crear la columna de votaciones
-            $output .= '<td style="border: 1px solid #ddd; padding: 8px;">';
+            $output .= '<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">';
             if ($votaciones && is_array($votaciones)) {
                 foreach ($votaciones as $votacion) {
                     $partido = $votacion['partido'];
                     $votacion_resultado = $votacion['votacion'];
                     $color = '';
 
-                    // Asignar color según el resultado de la votación
                     switch ($votacion_resultado) {
                         case 'A Favor':
                             $color = 'green';
@@ -66,25 +123,24 @@ function libreria_pnl_shortcode($atts) {
                             $color = 'red';
                             break;
                         case 'Abstención':
-                            $color = 'white';
+                            $color = 'yellow';
                             break;
                     }
 
-                    // Obtener el icono del partido
                     $partido_icono = isset($partidos_iconos[$partido]) ? $partidos_iconos[$partido] : '';
 
-                    // Agregar la información al contenido de salida
-                    $output .= '<img src="' . esc_url($partido_icono) . '" alt="' . esc_attr($partido) . '" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 10px;" />';
-                    $output .= '<span style="background-color:' . esc_attr($color) . '; width: 10px; height: 10px; display:inline-block; border-radius:50%; vertical-align: middle; margin-right: 5px;"></span>';
+                    $output .= '<div style="display: inline-block; text-align: center; margin-bottom: 15px; margin-right: 20px;">';
+                    $output .= '<img src="' . esc_url($partido_icono) . '" alt="' . esc_attr($partido) . '" style="width: auto; height: 50px; max-width: 150px; display: block; margin: 0 auto 10px auto;" />';
+                    $output .= '<div style="background-color:' . esc_attr($color) . '; width: 15px; height: 15px; display:inline-block; border-radius:50%; margin-top: 5px;"></div>';
+                    $output .= '</div>';
                 }
             } else {
                 $output .= 'No se encontraron votaciones registradas.';
             }
             $output .= '</td>';
 
-            // Crear la columna del botón de descarga
             if ($pdf_url) {
-                $output .= '<td style="border: 1px solid #ddd; padding: 8px;"><a href="' . esc_url($pdf_url) . '" class="boton-descargar" style="background-color: #0073aa; color: white; padding: 5px 10px; text-decoration: none; border-radius: 3px;">Descargar</a></td>';
+                $output .= '<td style="border: 1px solid #ddd; padding: 8px;"><a href="' . esc_url($pdf_url) . '" class="icono-descargar" style="text-decoration: none; display: block; text-align: center;"><img src="' . esc_url($plugin_dir_url . 'img/icono-descargar.png') . '" alt="Descargar" style="width: 24px; height: 24px;"></a></td>';
             } else {
                 $output .= '<td style="border: 1px solid #ddd; padding: 8px;">No disponible</td>';
             }
@@ -97,11 +153,18 @@ function libreria_pnl_shortcode($atts) {
 
     $output .= '</tbody></table>';
 
-    // Restaurar el post original
     wp_reset_postdata();
 
     return $output;
 }
 
-// Hook para registrar el shortcode
-add_shortcode('libreria_pnl', 'libreria_pnl_shortcode');
+// Manejar la solicitud AJAX para filtrar sesiones por área
+function filtrar_sesiones_por_area_ajax() {
+    $area_slug = isset($_POST['area_slug']) ? sanitize_text_field($_POST['area_slug']) : '';
+    echo libreria_pnl_get_sesiones($area_slug);
+    wp_die();
+}
+
+// Hooks para manejar AJAX
+add_action('wp_ajax_filtrar_sesiones_por_area', 'filtrar_sesiones_por_area_ajax');
+add_action('wp_ajax_nopriv_filtrar_sesiones_por_area', 'filtrar_sesiones_por_area_ajax');

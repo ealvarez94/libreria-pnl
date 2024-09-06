@@ -6,7 +6,7 @@
  * Author: Enol Alvarez Molinuevo
  * Text Domain: https://www.introvisual.com/
  */
- 
+
 // Hook para registrar el Custom Post Type
 add_action('init', 'libreria_pnls_register_post_type');
 
@@ -48,3 +48,17 @@ require_once plugin_dir_path(__FILE__) . 'shortcode-libreria-pnl.php';
 
 // Incluir el archivo de personalizaciones
 require_once plugin_dir_path(__FILE__) . 'customizations.php';
+
+// Función para encolar scripts y estilos
+function libreria_pnl_enqueue_scripts() {
+    // Encolar jQuery (viene por defecto en WordPress)
+    wp_enqueue_script('jquery');
+
+    // Encolar el script personalizado
+    wp_enqueue_script('libreria-pnl-script', plugin_dir_url(__FILE__) . 'js/libreria-pnl.js', array('jquery'), null, true);
+}
+
+// Hook para encolar scripts en el frontend
+add_action('wp_enqueue_scripts', 'libreria_pnl_enqueue_scripts');
+
+add_action('wp_enqueue_scripts', 'libreria_pnl_enqueue_scripts');
